@@ -40,7 +40,6 @@ int main(void)
 
     // Enable clock to the CAN peripheral
     rcc_periph_clock_enable(RCC_CAN1);
-    rcc_peripheral_enable_clock(&RCC_APB1ENR, RCC_APB1ENR_CANEN);
 
     // It looks like the GPIOs need to be set up before the CAN controller can work
     rcc_periph_clock_enable(RCC_GPIOB);
