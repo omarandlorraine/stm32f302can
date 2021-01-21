@@ -7,7 +7,7 @@ OBJDUMP = $(TOOLCHAIN)-objdump
 SIZE = $(TOOLCHAIN)-size
 
 #Target CPU options
-CPU_DEFINES = -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mcpu=cortex-m4 -DSTM32F3 -pedantic
+CPU_DEFINES =  -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mcpu=cortex-m4 -DSTM32F3 -pedantic
 
 GIT_COMMITS := $(shell git rev-list --count HEAD)
 GIT_COMMIT := $(shell git log -n 1 --format="%h-%f")
@@ -15,7 +15,7 @@ GIT_COMMIT := $(shell git log -n 1 --format="%h-%f")
 #Compiler options
 CFLAGS		+= -Os -g -c -std=gnu99
 CFLAGS		+= -Wall -Wextra -Werror
-CFLAGS		+= -fstack-usage -Wstack-usage=80
+CFLAGS		+= -fstack-usage -Wstack-usage=100
 CFLAGS		+= -MMD -MP
 CFLAGS		+= -fno-common -ffunction-sections -fdata-sections
 CFLAGS		+= $(CPU_DEFINES)
@@ -23,7 +23,7 @@ CFLAGS		+= -DGIT_VERSION=\"[$(GIT_COMMITS)]-$(GIT_COMMIT)\"
 
 INCLUDE_PATHS += -Ilibs/libopencm3/include -I.
 
-LINK_SCRIPT = stm32f303K8T6.ld
+LINK_SCRIPT = stm32f302R8T6.ld
 
 LINK_FLAGS =  -Llibs/libopencm3/lib --static -nostartfiles
 LINK_FLAGS += -Llibs/libopencm3/lib/stm32/f3
@@ -101,13 +101,30 @@ debug_mon: $(TARGET_ELF)
 	openocd -f board/st_nucleo_f3.cfg -f interface/stlink-v2-1.cfg -c "init" -c "reset init"
 
 debug_gdb: $(TARGET_ELF)
-	gdb-multiarch -ex "target remote localhost:3333" -ex "monitor reset halt" -ex load $(TARGET_ELF);
+	$(TOOLCHAIN)-gdb -ex "target remote localhost:3333" -ex "monitor reset halt" -ex load $(TARGET_ELF);
 
 debug:
 	screen $$(ls /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink* -1 | head -n 1) 115200 8n1
 
 cmd:
 	screen $$(ls /dev/serial/by-id/usb-Devtank_Ltd_IO_Board_Prototype-if00* -1 | head -n 1) 115200 8n1
+
+desktop_boot:
+	sudo gpioset --mode=signal --background 0 3=0
+	sudo gpioset -m time -s 1 0 2=0
+	sudo gpioset -m time -s 1 0 2=1
+	sudo pkill gpioset
+
+desktop_reset:
+	sudo gpioset -m time -s 1 0 2=0
+	sudo gpioset -m time -s 1 0 2=1
+
+desktop_dfu:
+	sudo gpioset --mode=signal --background 0 3=1
+	sudo gpioset -m time -s 1 0 2=0
+	sudo gpioset -m time -s 1 0 2=1
+	sudo pkill gpioset
+
 
 $(BUILD_DIR)stack_info : $(TARGET_ELF)
 	./avstack.pl $(OBJECTS) > $@

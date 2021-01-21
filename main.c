@@ -17,60 +17,73 @@
  * along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* "generic" could be any L1 board, but this file is pre-configured for the
- * libopencm3-tests "hw1" board, with an stm32l151c8-A part.
- */
-
-#include <libopencm3/cm3/nvic.h>
-#include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/flash.h>
 #include <libopencm3/stm32/rcc.h>
-#include <libopencm3/stm32/syscfg.h>
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/can.h>
 
-#include <stdio.h>
-#include "usb-gadget0.h"
+#define PORT_TO_RCC(_port_)   (RCC_GPIOA + ((_port_ - GPIO_PORT_A_BASE) / 0x400))
+#define LED_PORT    GPIOB
+#define LED_PIN     GPIO13
+#define CAN_TX_PORT GPIOB
+#define CAN_TX_PIN  GPIO9
+#define CAN_RX_PORT GPIOB
+#define CAN_RX_PIN  GPIO8
 
-#define ER_DEBUG
-#ifdef ER_DEBUG
-#define ER_DPRINTF(fmt, ...) \
-	do { printf(fmt, ## __VA_ARGS__); } while (0)
-#else
-#define ER_DPRINTF(fmt, ...) \
-	do { } while (0)
-#endif
 
 int main(void)
 {
-	//rcc_periph_clock_enable(RCC_GPIOE);
-	//gpio_mode_setup(GPIOE, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO11|GPIO12);
-	//gpio_set(GPIOE, GPIO12);
-	rcc_clock_setup_pll(&rcc_hse8mhz_configs[RCC_CLOCK_HSE8_72MHZ]);
+    rcc_clock_setup_hsi(&rcc_hsi_configs[RCC_CLOCK_HSI_64MHZ]);
+    rcc_periph_clock_enable(PORT_TO_RCC(LED_PORT));
 
-	rcc_periph_clock_enable(RCC_GPIOA);
-	/*
-	 * Vile hack to reenumerate, physically _drag_ d+ low.
-	 * do NOT do this if you're board has proper usb pull up control!
-	 * (need at least 2.5us to trigger usb disconnect)
-	 */
-    
-	gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO12);
-	gpio_clear(GPIOA, GPIO12);
-	for (unsigned int i = 0; i < 800000; i++) {
-		__asm__("nop");
-	}
-    
-	/* now return PA11/PA12 to usb AF */
-	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO11|GPIO12);
-	gpio_set_af(GPIOA, GPIO_AF14, GPIO11|GPIO12);
+    // LED GPIO setup
+    gpio_mode_setup(LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_PIN);
 
-	usbd_device *usbd_dev = gadget0_init(&st_usbfs_v1_usb_driver,
-					     "stm32f3-disco");
+    // Enable clock to the CAN peripheral
+    rcc_periph_clock_enable(RCC_CAN1);
+    rcc_peripheral_enable_clock(&RCC_APB1ENR, RCC_APB1ENR_CANEN);
 
-	ER_DPRINTF("bootup complete\n");
-	gpio_clear(GPIOE, GPIO12);
-	while (1) {
-		gadget0_run(usbd_dev);
-	}
+    // It looks like the GPIOs need to be set up before the CAN controller can work
+    rcc_periph_clock_enable(RCC_GPIOB);
+    gpio_mode_setup(CAN_TX_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CAN_TX_PIN);
+    gpio_mode_setup(CAN_RX_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CAN_RX_PIN);
+    gpio_set_af(CAN_TX_PORT, GPIO_AF9, CAN_TX_PIN);
+    gpio_set_af(CAN_RX_PORT, GPIO_AF9, CAN_RX_PIN);
 
+    // Reset and initialise the can peripheral
+    can_reset(CAN1);
+    int initfail = can_init(
+            CAN1,            // The can ID
+            false,           // No TTCM
+            true,            // Yes ABOM
+            false,           // Do not wake up on message rx
+            false,           // Do not auto-retry
+            false,           // Discard older messages over newer
+            false,           // TX priority based on identifier
+            CAN_BTR_SJW_1TQ, // Resync time quanta jump width
+            CAN_BTR_TS1_3TQ, // Time segment 1 time quanta width
+            CAN_BTR_TS2_4TQ, // Time segment 2 time quanta width
+            12,              // baudrate prescaler
+            false,           // loopback mode
+            false            // silent mode
+            );
+
+    // hang here if CAN initialisation fails
+    while(initfail)
+        ;
+
+    static uint8_t data[8] = {0, 1, 2, 0, 0, 0, 0, 0};
+    while (1) {
+        data[0]++;
+        if(can_transmit(CAN1,
+                0,     /* (EX/ST)ID: CAN ID */
+                false, /* IDE: CAN ID extended? */
+                false, /* RTR: Request transmit? */
+                8,     /* DLC: Data length */
+                data) != -1) gpio_toggle(LED_PORT, LED_PIN);
+
+        for (int i = 0; i < 1000000; i++) /* Wait a bit. */
+            __asm__("nop");
+    }
+
+    return 0;
 }
-
