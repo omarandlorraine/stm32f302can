@@ -24,9 +24,8 @@
 #define PORT_TO_RCC(_port_)   (RCC_GPIOA + ((_port_ - GPIO_PORT_A_BASE) / 0x400))
 #define LED_PORT    GPIOB
 #define LED_PIN     GPIO13
-#define CAN_TX_PORT GPIOB
+#define CAN_PORT    GPIOB
 #define CAN_TX_PIN  GPIO9
-#define CAN_RX_PORT GPIOB
 #define CAN_RX_PIN  GPIO8
 
 
@@ -43,10 +42,8 @@ int main(void)
 
     // It looks like the GPIOs need to be set up before the CAN controller can work
     rcc_periph_clock_enable(RCC_GPIOB);
-    gpio_mode_setup(CAN_TX_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CAN_TX_PIN);
-    gpio_mode_setup(CAN_RX_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CAN_RX_PIN);
-    gpio_set_af(CAN_TX_PORT, GPIO_AF9, CAN_TX_PIN);
-    gpio_set_af(CAN_RX_PORT, GPIO_AF9, CAN_RX_PIN);
+    gpio_mode_setup(CAN_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CAN_TX_PIN | CAN_RX_PIN);
+    gpio_set_af(CAN_PORT, GPIO_AF9, CAN_TX_PIN | CAN_RX_PIN);
 
     // Reset and initialise the can peripheral
     can_reset(CAN1);
